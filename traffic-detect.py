@@ -35,6 +35,7 @@ layernames = [layernames[i[0] - 1] for i in net.getUnconnectedOutLayers()]
 # initialize video stream
 cap = cv2.VideoCapture(args["input"])
 writer = None
+width, height = (None, None)
 
 # try to determine the total number of frames in the video file
 try:
@@ -59,11 +60,14 @@ else:
 
         if not ret:
             break
-
-        width, height = frame.shape[:2]
+        
+        if width is None or height is None:
+            height, width = frame.shape[:2]
 
         # perform forward pass of YOLO object detector
         # gives bounding boxes and associate probabilities
+        # blob = cv2.dnn.blobFromImage(
+        #     frame, 1/255.0, (416, 416), swapRB=True, crop=False)
         blob = cv2.dnn.blobFromImage(
             frame, 1/255.0, (416, 416), swapRB=True, crop=False)
         net.setInput(blob)
@@ -116,20 +120,22 @@ else:
                 cv2.putText(frame, text, (x, y-5),
                             cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 2)
 
-        if writer is None:
-            fourcc = cv2.VideoWriter_fourcc(*"MJPG")
-            writer = cv2.VideoWriter(args["output"], fourcc, 30,
-                (frame.shape[1], frame.shape[0]), True)
+                cv2.imshow("image", frame)
+                cv2.waitKey(1)
+        # if writer is None:
+        #     fourcc = cv2.VideoWriter_fourcc(*"MJPG")
+        #     writer = cv2.VideoWriter(args["output"], fourcc, 30,
+        #         (frame.shape[1], frame.shape[0]), True)
 
-            # some information on processing single frame
-            if total > 0:
-                elap = (end - start)
-                print("[INFO] single frame took {:.4f} seconds".format(elap))
-                print("[INFO] estimated total time to finish: {:.4f}".format(
-                    elap * total))
+        #     # some information on processing single frame
+        #     if total > 0:
+        #         elap = (end - start)
+        #         print("[INFO] single frame took {:.4f} seconds".format(elap))
+        #         print("[INFO] estimated total time to finish: {:.4f}".format(
+        #             elap * total))
 
-        # write output
-        writer.write(frame)
+        # # write output
+        # writer.write(frame)
 
 print("[INFO] cleaning up...")
 writer.release()
