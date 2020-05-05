@@ -4,6 +4,7 @@ import argparse
 import imutils
 import time
 import os
+from utils import get_four_points
 
 ap = argparse.ArgumentParser()
 ap.add_argument("-i", "--input", required=True, help="path to input video")
@@ -54,9 +55,45 @@ except:
 if not cap.isOpened():
     print("[ERROR] could not open file")
 else:
+    # get homography matrix 
+    ret, frame = cap.read()
+
+    # pass these in next time as a command line argument
+    newsize = (4000,6000,3)
+    size = (20,100,3)  
+
+    im_dst = np.zeros(newsize, np.uint8)
+
+    # points the source will get mapped to
+    pts_dst = np.array([
+        [800,800],
+        [800+size[0]-1,800],
+        [800+size[0]-1,800+size[1]-1],
+        [800,800+size[1]-1]],dtype=float)
+
+    # need to start from top left and end with bottom left
+    pts_src = get_four_points(frame)
+
+    h, status = cv2.findHomography(pts_src, pts_dst)
+
+    # translation matrix to get points within view
+    # calculate this based on warped perspective next time
+    t = np.array([
+        [1,0,100],
+        [0,1,3000],
+        [0,0,1]
+    ])
+
+    # total transformation matrix
+    transform = np.dot(t,h)
+
+    # looping over frames of video
     while True:
         # read next frame in video
         ret, frame = cap.read()
+
+        # create black background to project points onto
+        blackimage = np.full(newsize,[0,0,0],np.uint8)
 
         if not ret:
             break
@@ -64,10 +101,14 @@ else:
         if width is None or height is None:
             height, width = frame.shape[:2]
 
+        # im_dst = cv2.warpPerspective(frame, transform, newsize[0:2])
+        # newimage = cv2.resize(im_dst, (width//2, height//2))
+        # cv2.imshow("image", newimage)
+        # if cv2.waitKey(1) == ord('q'):
+        #     break
+
         # perform forward pass of YOLO object detector
         # gives bounding boxes and associate probabilities
-        # blob = cv2.dnn.blobFromImage(
-        #     frame, 1/255.0, (416, 416), swapRB=True, crop=False)
         blob = cv2.dnn.blobFromImage(
             frame, 1/255.0, (416, 416), swapRB=True, crop=False)
         net.setInput(blob)
@@ -79,6 +120,9 @@ else:
         boxes = []
         confidences = []
         classIDs = []
+
+        # TESTING: list of bounding box centers 
+        centers = []
 
         for output in layerOutputs:
             for detection in output:
@@ -96,6 +140,9 @@ else:
                     # calculate top left corner of bounding box
                     x = int(centerX - (boxW / 2))
                     y = int(centerY - (boxH / 2))
+
+                    # TESTIING
+                    centers.append((centerX, centerY))
 
                     boxes.append([x, y, int(boxW), int(boxH)])
                     confidences.append(float(confidence))
@@ -120,22 +167,35 @@ else:
                 cv2.putText(frame, text, (x, y-5),
                             cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 2)
 
-                cv2.imshow("image", frame)
-                cv2.waitKey(1)
-        # if writer is None:
-        #     fourcc = cv2.VideoWriter_fourcc(*"MJPG")
-        #     writer = cv2.VideoWriter(args["output"], fourcc, 30,
-        #         (frame.shape[1], frame.shape[0]), True)
+                # TESTING
+                # apply homography on homogeneous center point
+                centerh = np.array([centers[i][0], centers[i][1], 1])
+                newcenter = np.dot(transform, centerh)
+                cv2.circle(blackimage, 
+                    (np.ceil(newcenter[0]/newcenter[2]).astype(int), 
+                    np.ceil(newcenter[1]/newcenter[2]).astype(int)), 15, color, -1)
+        
+        newimage = cv2.resize(blackimage, (width//2, height//2))
+        cv2.imshow("image", newimage)
+        if cv2.waitKey(1) == ord('q'):
+            break
+
+        if writer is None:
+            fourcc = cv2.VideoWriter_fourcc(*"MJPG")
+            # writer = cv2.VideoWriter(args["output"], fourcc, 30,
+            #     (frame.shape[1], frame.shape[0]), True)
+            writer = cv2.VideoWriter(args["output"], fourcc, 30,
+                (blackimage.shape[1], blackimage.shape[0]), True)
 
         #     # some information on processing single frame
-        #     if total > 0:
-        #         elap = (end - start)
-        #         print("[INFO] single frame took {:.4f} seconds".format(elap))
-        #         print("[INFO] estimated total time to finish: {:.4f}".format(
-        #             elap * total))
+            if total > 0:
+                elap = (end - start)
+                print("[INFO] single frame took {:.4f} seconds".format(elap))
+                print("[INFO] estimated total time to finish: {:.4f}".format(
+                    elap * total))
 
-        # # write output
-        # writer.write(frame)
+        # write output
+        writer.write(blackimage)
 
 print("[INFO] cleaning up...")
 writer.release()
