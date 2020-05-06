@@ -3,3 +3,5 @@ __pycache__/
 models/
 video_data/
 output/
+it723_robotvision_project/
+it723_robotvision_project.*

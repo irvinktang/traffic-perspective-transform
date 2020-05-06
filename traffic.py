@@ -8,7 +8,8 @@ from utils import get_four_points
 
 ap = argparse.ArgumentParser()
 ap.add_argument("-i", "--input", required=True, help="path to input video")
-ap.add_argument("-o", "--output", required=True, help="path to output video")
+ap.add_argument("-od", "--outputdetect", required=True, help="path to output video")
+ap.add_argument("-og", "--outputgraph", required=True, help="path to output ")
 ap.add_argument("-y", "--yolo", required=True,
                 help="base path to YOLO directory")
 ap.add_argument("-c", "--confidence", type=float, default=0.5,
@@ -35,7 +36,8 @@ layernames = [layernames[i[0] - 1] for i in net.getUnconnectedOutLayers()]
 
 # initialize video stream
 cap = cv2.VideoCapture(args["input"])
-writer = None
+writerdetect = None
+writergraph = None
 width, height = (None, None)
 
 # try to determine the total number of frames in the video file
@@ -116,12 +118,10 @@ else:
         layerOutputs = net.forward(layernames)
         end = time.time()
 
-        # initialize lists of bounding boxes, confidences, and class IDs
+        # initialize lists of bounding boxes, confidences, class IDs, and centers
         boxes = []
         confidences = []
         classIDs = []
-
-        # TESTING: list of bounding box centers 
         centers = []
 
         for output in layerOutputs:
@@ -141,7 +141,6 @@ else:
                     x = int(centerX - (boxW / 2))
                     y = int(centerY - (boxH / 2))
 
-                    # TESTIING
                     centers.append((centerX, centerY))
 
                     boxes.append([x, y, int(boxW), int(boxH)])
@@ -175,19 +174,17 @@ else:
                     (np.ceil(newcenter[0]/newcenter[2]).astype(int), 
                     np.ceil(newcenter[1]/newcenter[2]).astype(int)), 15, color, -1)
         
+        # resizing blackimage so that viewable area will fit on a screen
         newimage = cv2.resize(blackimage, (width//2, height//2))
-        cv2.imshow("image", newimage)
-        if cv2.waitKey(1) == ord('q'):
-            break
 
-        if writer is None:
+        if writerdetect is None or writergraph is None:
             fourcc = cv2.VideoWriter_fourcc(*"MJPG")
-            # writer = cv2.VideoWriter(args["output"], fourcc, 30,
-            #     (frame.shape[1], frame.shape[0]), True)
-            writer = cv2.VideoWriter(args["output"], fourcc, 30,
-                (blackimage.shape[1], blackimage.shape[0]), True)
+            writerdetect = cv2.VideoWriter(args["outputdetect"], fourcc, 30,
+                (frame.shape[1], frame.shape[0]), True)
+            writergraph = cv2.VideoWriter(args["outputgraph"], fourcc, 30,
+                (newimage.shape[1], newimage.shape[0]), True)
 
-        #     # some information on processing single frame
+            # some information on processing single frame
             if total > 0:
                 elap = (end - start)
                 print("[INFO] single frame took {:.4f} seconds".format(elap))
@@ -195,8 +192,10 @@ else:
                     elap * total))
 
         # write output
-        writer.write(blackimage)
+        writerdetect.write(frame)
+        writergraph.write(newimage)
 
 print("[INFO] cleaning up...")
-writer.release()
+writerdetect.release()
+writergraph.release()
 cap.release()
